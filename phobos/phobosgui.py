@@ -872,7 +872,7 @@ class PhobosExportPanel(bpy.types.Panel):
         # layout.operator("phobos.export_bake", text="Bake Robot Model", icon="OUTLINER_OB_ARMATURE")
         # layout.operator("phobos.create_robot_instance", text="Create Robot Lib Instance", icon="RENDERLAYERS")
 
-        #  self.layout.prop(expsets, "heightmapMesh", text="export heightmap as mesh")
+        # self.layout.prop(expsets, "heightmapMesh", text="export heightmap as mesh")
 
         layout.separator()
         layout.operator("phobos.export_model", icon="EXPORT")

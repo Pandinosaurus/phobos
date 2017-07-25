@@ -246,7 +246,8 @@ def deriveJointState(joint):
              'translation': list(joint.pose.bones[0].matrix_basis.to_translation()),
              'rotation_euler': list(joint.pose.bones[0].matrix_basis.to_euler()),
              'rotation_quaternion': list(joint.pose.bones[0].matrix_basis.to_quaternion())}
-    # TODO: hard-coding this could prove problematic if we at some point build armatures from multiple bones
+    # TODO: hard-coding this could prove problematic if we at some point build
+    # armatures from multiple bones
     return state
 
 
@@ -292,7 +293,8 @@ def deriveKinematics(obj):
     link = deriveLink(obj)
     joint = None
     motor = None
-    # joints and motors of root elements are only relevant for scenes, not within models
+    # joints and motors of root elements are only relevant for scenes, not
+    # within models
     if sUtils.getEffectiveParent(obj):
         # TODO: here we have to identify root joints and write their properties to SMURF!
         # --> namespacing parent = "blub::blublink1"
