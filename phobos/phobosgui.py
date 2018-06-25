@@ -35,13 +35,15 @@ from bpy.props import (BoolProperty, IntProperty, StringProperty, EnumProperty,
                        PointerProperty, CollectionProperty, FloatProperty)
 from bpy.types import AddonPreferences
 
-from . import defs
-from . import display
-from phobos.phoboslog import loglevels
 from phobos.io import entities
 from phobos.io import meshes
 from phobos.io import scenes
 from phobos.io import libraries
+from phobos.phoboslog import loglevels
+import phobos.utils.io as ioUtils
+
+from . import defs
+from . import display
 
 
 class ModelPoseProp(bpy.types.PropertyGroup):
@@ -60,6 +62,11 @@ class ModelPoseProp(bpy.types.PropertyGroup):
 class PhobosPrefs(AddonPreferences):
     """The general Phobos addon settings are stored in this class.
     They can be edited in the User Preferences of Blender under the Addon tab.
+
+    Args:
+
+    Returns:
+
     """
     bl_idname = __package__
 
@@ -111,12 +118,12 @@ class PhobosPrefs(AddonPreferences):
         layout.label(text="Log Settings")
         layout.prop(self, "logfile", text="log file path")
         layout.prop(self, "logtofile", text="write to logfile")
-        layout.prop(self, "logtoterminal", text="only display in terminal")
+        layout.prop(self, "logtoterminal", text="write to terminal")
         layout.prop(self, "loglevel", text="log level")
         layout.separator()
         layout.label(text="Folders")
         layout.prop(self, "modelsfolder", text="models folder")
-        layout.prop(self, "configfolder", text="models folder")
+        layout.prop(self, "configfolder", text="config folder")
 
 prev_collections = {}
 phobosIcon = 0
@@ -127,8 +134,8 @@ class PhobosExportSettings(bpy.types.PropertyGroup):
 
     def updateExportPath(self, context):
         # DOCU missing description
-        if not bpy.data.worlds[0].phobosexportsettings.path.endswith('/'):
-            bpy.data.worlds[0].phobosexportsettings.path += '/'
+        if not bpy.data.window_managers[0].phobosexportsettings.path.endswith('/'):
+            bpy.data.window_managers[0].phobosexportsettings.path += '/'
 
     def getMeshTypeListForEnumProp(self, context):
         # DOCU missing description
@@ -136,9 +143,7 @@ class PhobosExportSettings(bpy.types.PropertyGroup):
 
     path = StringProperty(name='path', subtype='DIR_PATH', default='../',
                           update=updateExportPath)
-    # CHECK which props are visible in GUI?
-    structureExport = BoolProperty(name="Structure export", default=True,
-                                   description="Create structured subfolders")
+    # TODO: CHECK which props are visible in GUI?
     selectedOnly = BoolProperty(name="Selected only", default=True,
                                 description="Export only selected objects")
     decimalPlaces = IntProperty(name="decimals", description="Number of " +
@@ -182,8 +187,7 @@ class Models_Poses_UIList(bpy.types.UIList):
                   active_propname, index):
         self.use_filter_show = False
         im = item
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            "phobos"].preferences.models_poses
+        modelsPosesColl = bpy.context.user_preferences.addons["phobos"].preferences.models_poses
         if im.name in modelsPosesColl.keys():
             coll_item = modelsPosesColl[im.name]
             if coll_item.type == "robot_name":
@@ -203,8 +207,7 @@ class Models_Poses_UIList(bpy.types.UIList):
         images = getattr(data, propname)
         flt_flags = [self.bitflag_filter_item] * len(images)
 
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            "phobos"].preferences.models_poses
+        modelsPosesColl = bpy.context.user_preferences.addons["phobos"].preferences.models_poses
 
         # Filter items. Only show robots. Hide all other images
         for idx, im in enumerate(images):
@@ -260,9 +263,6 @@ class PhobosToolsPanel(bpy.types.Panel):
         tsc1.operator('phobos.select_objects_by_phobostype',
                       text="by Phobostype")
         tsc1.operator('phobos.select_objects_by_name', text="by Name")
-        tsc1.prop(bpy.context.window_manager, 'draw_phobos_infos')
-        tsc1.prop(bpy.context.window_manager, 'phobos_msg_count')
-        tsc1.prop(bpy.context.window_manager, 'phobos_msg_offset')
         tsc2 = tsinlayout.column(align=True)
         tsc2.label(text="Tools", icon='MODIFIER')
         tsc2.operator('phobos.sort_objects_to_layers', icon='IMGDISPLAY')
@@ -373,7 +373,13 @@ class MatrixPropGroup(bpy.types.PropertyGroup):
 # CHECK will this stay here? Give it its own file?
 class PhobosMatrixPanel(bpy.types.Panel):
     """Contains summary information and editing possibilities in the Buttons
-    Window"""
+    Window
+
+    Args:
+
+    Returns:
+
+    """
     bl_idname = "INFOBAR_PT_PHOBOS_TOOLS"
     bl_label = "Phobos Matrix Information"
     bl_space_type = "PROPERTIES"
@@ -424,7 +430,13 @@ class PhobosMatrixPanel(bpy.types.Panel):
 
 class PhobosObjectInformationPanel(bpy.types.Panel):
     """Contains information like parent, immediate children etc. in the
-    Buttons Window"""
+    Buttons Window
+
+    Args:
+
+    Returns:
+
+    """
     bl_idname = "OBJINFO_PT_PHOBOS_TOOLS"
     bl_label = "Phobos Object Information"
     bl_space_type = "PROPERTIES"
@@ -495,6 +507,7 @@ class PhobosPropertyInformationPanel(bpy.types.Panel):
             if type(value[i]) is float:
                 value[i] = '{0:.4f}'.format(value[i])
 
+            # use custom properties for special operators or icons
             # use custom properties for special operators or icons
             if params[i]:
                 colL.label(text='{0}'.format(prop[i]))
@@ -708,10 +721,12 @@ class PhobosModelPanel(bpy.types.Panel):
         kc2 = kinlayout.column(align=True)
         kc1.label(text='Kinematics', icon='POSE_DATA')
         kc1.operator("phobos.create_links")
+        kc1.operator('phobos.merge_links')
         kc1.operator('phobos.define_joint_constraints')
         kc1.operator("phobos.create_mimic_joint")
         kc1.operator('phobos.add_kinematic_chain', icon='CONSTRAINT')
-        kc1.operator('phobos.define_submechanism')
+        kc1.operator('phobos.assign_submechanism')
+        kc1.operator('phobos.set_model_root')
         kc2.label(text='Visual/Collision', icon='GROUP')
         kc2.operator('phobos.create_collision_objects')
         kc2.operator('phobos.define_geometry')
@@ -725,14 +740,14 @@ class PhobosModelPanel(bpy.types.Panel):
         hw1.label(text="Hardware", icon='MOD_SCREW')
         hw1.operator('phobos.add_motor')
         hw1.operator("phobos.add_annotations")
+        hw1.operator('phobos.create_interface')
 
         # Masses & Inertia
         mc1 = minlayout.column(align=True)
         mc1.label(text="Masses & Inertia", icon='PHYSICS')
         mc1.operator('phobos.calculate_mass')
         mc1.operator('phobos.set_mass')
-        mc1.operator('phobos.sync_masses')
-        mc1.operator('phobos.create_minor_inertials')
+        mc1.operator('phobos.create_helper_inertials')
         mc1.operator('phobos.create_link_inertials')
         mc1.operator('phobos.edit_inertia')
 
@@ -803,8 +818,7 @@ class PhobosModelPanel(bpy.types.Panel):
 
 
 class PhobosExportPanel(bpy.types.Panel):
-    """Contains the export settings for models/meshes etc. in the Phobos viewport toolbar
-    """
+    """Contains the export settings for models/meshes etc. in the Phobos viewport toolbar"""
     bl_idname = "TOOLS_EXPORT_PT_PHOBOS"
     bl_label = "Export"
     bl_space_type = 'VIEW_3D'
@@ -817,7 +831,7 @@ class PhobosExportPanel(bpy.types.Panel):
         self.layout.label(icon_value=phobosIcon)
 
     def draw(self, context):
-        expsets = bpy.data.worlds[0].phobosexportsettings
+        expsets = bpy.data.window_managers[0].phobosexportsettings
         layout = self.layout
 
         # export robot model options
@@ -826,7 +840,6 @@ class PhobosExportPanel(bpy.types.Panel):
         g1 = ginlayout.column(align=True)
         # FIXME remove this?
         # g1.prop(expsets, "relativePaths")
-        # g1.prop(expsets, "structureExport")
         g1.prop(expsets, "exportTextures")
         g1.prop(expsets, "selectedOnly")
         g2 = ginlayout.column(align=True)
@@ -839,32 +852,26 @@ class PhobosExportPanel(bpy.types.Panel):
 
         cmodel = inlayout.column(align=True)
         cmodel.label(text="Models")
-        for entitytype in sorted(entities.entity_types):
-            if ('export' in entities.entity_types[entitytype] and
-                    'extensions' in entities.entity_types[entitytype]):
-                typename = "export_entity_" + entitytype
-                cmodel.prop(bpy.data.worlds[0], typename)
+        for entitytype in ioUtils.getEntityTypesForExport():
+            typename = "export_entity_" + entitytype
+            cmodel.prop(bpy.data.window_managers[0], typename)
 
         cmesh = inlayout.column(align=True)
         cmesh.label(text="Meshes")
         for meshtype in sorted(meshes.mesh_types):
             if 'export' in meshes.mesh_types[meshtype]:
                 typename = "export_mesh_" + meshtype
-                cmesh.prop(bpy.data.worlds[0], typename)
-        cmesh.prop(bpy.data.worlds[0].phobosexportsettings, 'outputMeshtype')
+                cmesh.prop(bpy.data.window_managers[0], typename)
+        cmesh.prop(bpy.data.window_managers[0].phobosexportsettings, 'outputMeshtype')
 
         cscene = inlayout.column(align=True)
         cscene.label(text="Scenes")
-        for scenetype in sorted(scenes.scene_types):
-            if 'export' in scenes.scene_types[scenetype]:
-                typename = "export_scene_" + scenetype
-                cscene.prop(bpy.data.worlds[0], typename)
+        for scenetype in ioUtils.getSceneTypesForExport():
+            typename = "export_scene_" + scenetype
+            cscene.prop(bpy.data.window_managers[0], typename)
 
         # TODO delete me?
         # c2.prop(expsets, "exportCustomData", text="Export custom data")
-
-        # CHECK issue with export and import of models with new generic system
-        # ec2 = layout.column(align=True)
 
         # TODO delete me?
         # layout.separator()
@@ -880,8 +887,7 @@ class PhobosExportPanel(bpy.types.Panel):
 
 
 class PhobosImportPanel(bpy.types.Panel):
-    """Contains the import settings in the Phobos viewport toolbar
-    """
+    """Contains the import settings in the Phobos viewport toolbar"""
     bl_idname = "TOOLS_IMPORT_PT_PHOBOS"
     bl_label = "Import"
     bl_space_type = 'VIEW_3D'
@@ -898,9 +904,9 @@ class PhobosImportPanel(bpy.types.Panel):
                              text="Import Robot Model", icon="IMPORT")
 
 
-class PhobosAssembliesPanel(bpy.types.Panel):
-    bl_idname = "TOOLS_ASSEMBLIES_PT_PHOBOS"
-    bl_label = "Assemblies"
+class PhobosSubmodelsPanel(bpy.types.Panel):
+    bl_idname = "TOOLS_SUBMODELS_PT_PHOBOS"
+    bl_label = "Submodels"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
     bl_category = 'Phobos Models'
@@ -910,15 +916,14 @@ class PhobosAssembliesPanel(bpy.types.Panel):
         pass
 
     def draw(self, context):
-        self.layout.operator("phobos.define_assembly")
-        self.layout.operator("phobos.instantiate_assembly")
+        self.layout.operator("phobos.define_submodel")
+        self.layout.operator("phobos.add_submodel")
         self.layout.operator("phobos.toggle_interfaces")
         self.layout.operator("phobos.connect_interfaces")
 
 
 class PhobosObjectPanel(bpy.types.Panel):
-    """Contains the custom properties of objects in the Buttons Window
-    """
+    """Contains the custom properties of objects in the Buttons Window"""
     bl_idname = "phobos.PT_PHOBOS"
     bl_label = "Phobos properties"
     bl_space_type = 'PROPERTIES'
@@ -997,12 +1002,46 @@ def get_operator_manuals():
     """Returns a tuple with the Phobos wiki Operator page and pairs of operator
     names and wiki page anchor names to allow for linking from Blender to wiki.
     :return: tuple
+
+    Args:
+
+    Returns:
+
     """
     # CHECK does the linking work with the new wiki?
-    url_manual_prefix = "https://github.com/rock-simulation/phobos/wiki/Operators#"
+    url_manual_prefix = "https://github.com/dfki-ric/phobos/wiki/Operators#"
     url_manual_ops = tuple(('bpy.ops.phobos.' + opname, opname.replace('_', '-'),)
                            for opname in dir(bpy.ops.phobos) if not opname.startswith("__"))
     return url_manual_prefix, url_manual_ops
+
+
+class PhobosDisplayPanel(bpy.types.Panel):
+    bl_idname = "TOOLS_DISPLAY_PT_PHOBOS"
+    bl_label = "Display"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+    bl_category = 'Phobos'
+
+    def draw_header(self, context):
+        #self.layout.label(icon='IMPORT')
+        pass
+
+    def draw(self, context):
+        wm = context.window_manager
+        self.layout.prop(wm, "draw_phobos_infos")
+        if wm.draw_phobos_infos:
+            self.layout.separator()
+            self.layout.label('Draw...')
+            dlayout = self.layout.split()
+            dc1 = dlayout.column(align=True)
+            dc2 = dlayout.column(align=True)
+            dc1.prop(wm, "draw_jointaxes")
+            dc1.prop(wm, "jointaxes_length")
+            dc1.prop(wm, "draw_submechanisms")
+            dc1.prop(wm, "draw_progress")
+            dc2.prop(wm, "draw_messages")
+            dc2.prop(wm, 'phobos_msg_count')
+            dc2.prop(wm, 'phobos_msg_offset')
 
 
 def register():
@@ -1014,17 +1053,33 @@ def register():
         name="type",
         description="Phobos object type")
 
-    bpy.types.WindowManager.phobos_msg_count = IntProperty(
-        name='messages to show', default=5, min=0, max=20,
-        description="How many Phobos log messages to show on screen")
-
-    bpy.types.WindowManager.phobos_msg_offset = IntProperty(
-        name='message start index', default=0, min=0, max=50,
-        description="The Phobos log message index to start with")
-
+    # add display properties to window manager
     bpy.types.WindowManager.draw_phobos_infos = BoolProperty(
         name='Draw Phobos Infos', default=False, update=display.start_draw_operator,
         description="Draw additional data visualization for Phobos items in 3D View.")
+
+    bpy.types.WindowManager.draw_jointaxes = BoolProperty(
+        name='Joint Axes', default=True)
+
+    bpy.types.WindowManager.jointaxes_length = FloatProperty(
+        name='Length', default=0.3)
+
+    bpy.types.WindowManager.draw_submechanisms = BoolProperty(
+        name='Submechanisms', default=True)
+
+    bpy.types.WindowManager.draw_messages = BoolProperty(
+        name='Messages', default=True)
+
+    bpy.types.WindowManager.phobos_msg_count = IntProperty(
+        name='show', default=5, min=0, max=20,
+        description="How many Phobos log messages to show on screen")
+
+    bpy.types.WindowManager.phobos_msg_offset = IntProperty(
+        name='offset', default=0, min=0, max=50,
+        description="The Phobos log message index to start with")
+
+    bpy.types.WindowManager.draw_progress = BoolProperty(
+        name='Progress', default=True)
 
     bpy.types.WindowManager.progress = FloatProperty(
         name='Progress', default=0,
@@ -1034,20 +1089,17 @@ def register():
     for meshtype in meshes.mesh_types:
         if 'export' in meshes.mesh_types[meshtype]:
             typename = "export_mesh_" + meshtype
-            setattr(bpy.types.World, typename, BoolProperty(
-                name=meshtype, default=False))
+            setattr(bpy.types.WindowManager, typename, BoolProperty(name=meshtype))
 
     for entitytype in entities.entity_types:
         if 'export' in entities.entity_types[entitytype]:
             typename = "export_entity_" + entitytype
-            setattr(bpy.types.World, typename, BoolProperty(
-                name=entitytype, default=False))
+            setattr(bpy.types.WindowManager, typename, BoolProperty(name=entitytype))
 
     for scenetype in scenes.scene_types:
         if 'export' in scenes.scene_types[scenetype]:
             typename = "export_scene_" + scenetype
-            setattr(bpy.types.World, typename, BoolProperty(
-                name=scenetype, default=False))
+            setattr(bpy.types.WindowManager, typename, BoolProperty(name=scenetype))
 
     # Load custom icons
     import os
@@ -1123,17 +1175,19 @@ def register():
     bpy.types.Scene.phobospropcategories = EnumProperty(items=[])
 
     bpy.utils.register_class(PhobosToolsPanel)
+    bpy.utils.register_class(PhobosDisplayPanel)
     bpy.utils.register_class(PhobosModelPanel)
     # TODO delete me?
     # bpy.utils.register_class(PhobosScenePanel)
-    bpy.utils.register_class(PhobosAssembliesPanel)
+    bpy.utils.register_class(PhobosSubmodelsPanel)
     bpy.utils.register_class(PhobosExportPanel)
     bpy.utils.register_class(PhobosImportPanel)
     bpy.utils.register_class(PhobosObjectPanel)
 
     # add phobos settings to scene/world
-    bpy.types.World.phobosexportsettings = PointerProperty(
+    bpy.types.WindowManager.phobosexportsettings = PointerProperty(
         type=PhobosExportSettings)
+    # TODO move other stuff to windowmanager instead of world
     bpy.types.Scene.active_ModelPose = bpy.props.IntProperty(
         name="Index of current pose", default=0, update=showPreview)
     bpy.types.Scene.preview_visible = bpy.props.BoolProperty(
@@ -1152,6 +1206,7 @@ def register():
 
 def unregister():
     print("Unregistering phobosgui...")
+    libraries.unregister()
 
     # Unregister icons
     for pcoll in prev_collections.values():

@@ -42,9 +42,7 @@ loglevels = ('NONE', 'ERROR', 'WARNING', 'INFO', 'DEBUG')
 
 
 class col:
-    """
-    Provides the color ids for different terminal messages.
-    """
+    """Provides the color ids for different terminal messages."""
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
@@ -59,13 +57,15 @@ class col:
 
 
 def decorate(level):
-    """
-    Provides a simple wrapper to color the log level according to the colors
+    """Provides a simple wrapper to color the log level according to the colors
     from class col.
 
-    :param level: the loging level as described by loglevels.
-    :type level: str.
-    :return: str - decorated string of level
+    Args:
+      level(str): the loging level as described by loglevels.
+
+    Returns:
+      str - decorated string of level
+
     """
     if level == "INFO":
         return col.BOLD+col.OKGREEN+level+col.ENDC
@@ -79,47 +79,55 @@ def decorate(level):
         return level
 
 
-def log(message, level="INFO", origin=None, prefix=""):
-    """
-    Logs a given message to the blender console and logging file if present
+def log(message, level="INFO", origin=None, prefix="", guionly=False, end='\n'):
+    """Logs a given message to the blender console and logging file if present
     and if log level is low enough. The origin can be defined as string.
     The message is logged by the operator depending on the loglevel
     settings.
 
-    :param message: The message to log.
-    :type message: str.
-    :param level: Valid log level for the message as defined by 'loglevels'.
-    :type level: str.
-    :param origin: If set the message is prefixed with the origin.
-    :type origin: str. or obj.
-    :param prefix: Any string that should be printed before message (e.g. "\n")
-    :type prefix: str.
-    :return: None.
+    Args:
+      message(str): The message to log.
+      level(str, optional): Valid log level for the message as defined by 'loglevels'. (Default value = "INFO")
+      origin(str. or obj, optional): If set the message is prefixed with the origin. (Default value = None)
+      prefix(str, optional): Any string that should be printed before message (e.g. "\n") (Default value = "")
+      guionly: if True, only prints to GUI (Default value = False)
+      end(str, optional): string to be used at the end of the resulting print statement (Default value = "\n")
+
+    Returns:
+      None.
+
     """
     callerframerecord = inspect.stack()[1]
     frame = callerframerecord[0]
     info = inspect.getframeinfo(frame)
-    originname = info.filename.split('addons/')[-1] + ' - ' + info.function + '(l' + str(info.lineno) + ')'
+    originname = '{0} - {1} (l{2})'.format(info.filename.split('addons/')[-1], info.function,
+                                           info.lineno)
 
     # Display only messages up to preferred log level
     prefs = bpy.context.user_preferences.addons["phobos"].preferences
     if loglevels.index(level) <= loglevels.index(prefs.loglevel):
-        date = datetime.now().strftime("%Y%m%d_%H:%M")
-        msg = date + " - " + level + " " + message + " (" + originname + ")"
-        terminalmsg = prefix + "[" + date + "] " + decorate(level) + " " + message +\
-                      col.DIM + " (" + originname + ")" + col.ENDC
+        date = datetime.now().strftime("%Y%m%d_%H:%M:%S")
+        if end == '\n':  # no end of line assumes some sort of listing, dropping the shebang
+            msg = date + " - " + level + " " + message + " (" + originname + ")"
+            terminalmsg = '{0}[{1}] {2} {3}{4} ({5}){6}'.format(prefix, date, decorate(level), message,
+                                                                col.DIM, originname, col.ENDC)
+        else:
+            msg = message
+            terminalmsg = col.OKBLUE + message + col.ENDC
 
         # log to file if activated
-        if prefs.logtofile:
+        if prefs.logtofile and not guionly:
             try:
                 with open(prefs.logfile, "a") as lf:
-                    lf.write(msg + "\n")
-            except IOError:
-                print("Cannot write to log file!")
+                    lf.write(msg + end)
+            except (FileNotFoundError, IsADirectoryError):
+                log("Invalid log file path, cannot write to log file!", 'ERROR', guionly=True)
+            except (IOError, OSError):
+                log("Cannot write to log file!", 'ERROR', guionly=True)
 
         # log to terminal or Blender
         if prefs.logtoterminal:
-            print(terminalmsg)
+            print(terminalmsg, end=end)
         else:
             # log in GUI depending on loglevel
             import sys

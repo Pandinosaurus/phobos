@@ -2,21 +2,39 @@
 # construction of robots, such as parallel mechanisms for joint actuation.
 
 submechanisms:
-  RR:
-    category: two_revolute_joints
+  revolute:
+    type: R
+    joints:
+        active: ['revolute']
+        independent: ['revolute']
+        spanningtree: ['revolute']
+  universal:
     type: RR
-    size: 2
     joints:
         active: ['revolute1', 'revolute2']
-        passive: []
         independent: ['revolute1', 'revolute2']
         spanningtree: ['revolute1', 'revolute2']
-  rrPr:
-    category: lambda_mechanism
+  spherical:
+    type: RRR
+    joints:
+        active: ['revolute1', 'revolute2', 'revolute3']
+        independent: ['revolute1', 'revolute2', 'revolute3']
+        spanningtree: ['revolute1', 'revolute2', 'revolute3']
+  lambda_mechanism:
     type: rrPr
-    size: 3
     joints:
         active: ['prismatic1']
-        passive: ['revolute1', 'revolute2']
         independent: ['revolute1']
         spanningtree: ['revolute1', 'revolute2', 'prismatic1']
+  ankle_mechanism:
+    type: 2sPrr+1u
+    joints:
+        active: ['prismatic7', 'prismatic10']
+        independent: ['revolute1', 'revolute2']
+        spanningtree: ['revolute1', 'revolute2', 'revolute3', 'revolute4', 'revolute5', 'revolute6', 'prismatic7', 'revolute8', 'revolute9', 'prismatic10']
+  torso_mechanism:
+    type: 2sPu+1u
+    joints:
+        active: ['prismatic5', 'prismatic8']
+        independent: ['revolute1', 'revolute2']
+        spanningtree: ['revolute1', 'revolute2', 'revolute3', 'revolute4', 'prismatic5', 'revolute6', 'revolute7', 'prismatic8']

@@ -36,21 +36,23 @@ import bpy
 import phobos.defs as defs
 import phobos.model.models as models
 import phobos.utils.io as ioUtils
+import phobos.utils.blender as bUtils
 from phobos.io.entities.urdf import sort_urdf_elements
 from phobos.phoboslog import log
 
 
 def deriveEntity(root, outpath):
     """Derives the dictionary for a SMURF entity from the phobos model dictionary.
-
+    
     # TODO savetosubfolder is not a parameter
-    :param root: The smurf root object.
-    :type root: bpy.types.Object
-    :param outpath: The path to export the smurf to.
-    :type outpath: str
-    :param savetosubfolder: If True the export path has a subfolder for this smurf entity.
-    :type savetosubfolder: bool
-    :return: dict - An entry for the scenes entitiesList
+
+    Args:
+      root(bpy.types.Object): The smurf root object.
+      outpath(str): The path to export the smurf to.
+      savetosubfolder(bool): If True the export path has a subfolder for this smurf entity.
+
+    Returns:
+      dict - An entry for the scenes entitiesList
 
     """
     entitypose = models.deriveObjectPose(root)
@@ -65,12 +67,12 @@ def deriveEntity(root, outpath):
     if "isReference" in entity:
         entity.pop("isReference")
         bpy.ops.scene.reload_models_and_poses_operator()
-        modelsPosesColl = bpy.context.user_preferences.addons["phobos"].preferences.models_poses
+        modelsPosesColl = bUtils.getPhobosPreferences().models_poses
         for robot_model in modelsPosesColl:
             if (root["modelname"] == robot_model.robot_name) and (root["entity/pose"] == robot_model.label):
                 pass
         entity['file'] = os.path.join(os.path.relpath(robot_model.path, outpath), root["name"] + ".smurf")
-        '''
+        """
         with open(os.path.join(os.path.dirname(defs.__file__), "RobotLib.yml"), "r") as f:
             robots = yaml.load(f.read())
             sourcepath = robots[smurf["modelname"]]
@@ -82,11 +84,9 @@ def deriveEntity(root, outpath):
                     # remove old folders to prevent errors in copytree
                     shutil.rmtree(os.path.join(smurf_outpath, filename), True)
                     shutil.copytree(fullpath, os.path.join(smurf_outpath, filename))
-        '''
+        """
     else:
-        modelpath = os.path.join(outpath, root['modelname'])
-        if ioUtils.getExpSettings().structureExport:
-            modelpath = os.path.join(modelpath, 'smurf')
+        modelpath = os.path.join(outpath, root['modelname'], 'smurf')
         # TODO why the spacing between the paths?
         log("Scene paths: " + outpath + ' ' + modelpath, "DEBUG")
         entity['file'] = os.path.join(os.path.relpath(modelpath, os.path.dirname(outpath)), root['modelname']+".smurf")
@@ -98,9 +98,11 @@ def gatherAnnotations(model):
     across the model. These annotations were created in the model.py
     module and are marked with a leading '$'.
 
-    :param model: The robot model dictionary.
-    :type model: dict
-    :return: dict -- A dictionary of the gathered annotations.
+    Args:
+      model(dict): The robot model dictionary.
+
+    Returns:
+      dict -- A dictionary of the gathered annotations.
 
     """
     annotations = {}
@@ -140,16 +142,19 @@ def gatherAnnotations(model):
                 delkeys.append(key)
         delkeys.append('temp_type')
         for key in delkeys:
-            del element[key]
+            if key in element:
+                del element[key]
     return annotations
 
 
 def deriveRefinedCollisionData(model):
     """This function collects all collision bitmasks in a given model.
 
-    :param model: The robot model to search in.
-    :type model: dict
-    :return: dict -- a dictionary containing all bitmasks with corresponding element name (key).
+    Args:
+      model(dict): The robot model to search in.
+
+    Returns:
+      dict -- a dictionary containing all bitmasks with corresponding element name (key).
 
     """
     collisiondata = {}
@@ -167,8 +172,11 @@ def deriveRefinedCollisionData(model):
 def gatherLevelOfDetailSettings(model):
     """This function collects all level of detail settings in a given model.
 
-    :param model: The robot model to search in.
-    :return: dict -- a dictionary containing all bitmasks with corresponding element name (key).
+    Args:
+      model: The robot model to search in.
+
+    Returns:
+      dict -- a dictionary containing all bitmasks with corresponding element name (key).
 
     """
     lods = {}
@@ -181,10 +189,13 @@ def gatherLevelOfDetailSettings(model):
 
 
 def sort_for_yaml_dump(structure, category):
-    """ TODO Please add doc ASAP
-    :param structure:
-    :param category:
-    :return:
+    """TODO Please add doc ASAP
+
+    Args:
+      structure: param category:
+      category: 
+
+    Returns:
 
     """
     if category in ['materials', 'motors', 'sensors']:
@@ -200,9 +211,12 @@ def sort_for_yaml_dump(structure, category):
 
 def sort_dict_list(dict_list, sort_key):
     """TODO Please add doc ASAP
-    :param dict_list:
-    :param sort_key:
-    :return:
+
+    Args:
+      dict_list: param sort_key:
+      sort_key: 
+
+    Returns:
 
     """
     sorted_dict_list = []
@@ -291,7 +305,7 @@ def exportSmurf(model, path):
     # append custom data
     with open(os.path.join(path, smurf_filename), 'w') as op:
         op.write('# main SMURF file of model "' + model['name'] + '"\n')
-        op.write('# created with Phobos ' + defs.version + ' - https://github.com/rock-simulation/phobos\n\n')
+        op.write('# created with Phobos ' + defs.version + ' - ' + defs.repository + '\n\n')
         op.write("SMURF version: " + defs.version + "\n")
         op.write("modelname: " + model['name'] + "\n")
         op.write(yaml.dump(modeldata, default_flow_style=False))
@@ -371,13 +385,14 @@ def exportSmurf(model, path):
                 op.write(yaml.dump({data: list(model[data].values())}, default_flow_style=False))
 
     # write submechanisms
-    with open(os.path.join(path, filenames['submechanisms']), 'w') as op:
-        op.write('#submechanisms' + infostring)
-        op.write(yaml.dump({'submechanisms': model['submechanisms']}))#, default_flow_style=False))
+    if model['submechanisms']:
+        with open(os.path.join(path, filenames['submechanisms']), 'w') as op:
+            op.write('#submechanisms' + infostring)
+            op.write(yaml.dump({'submechanisms': model['submechanisms']}))#, default_flow_style=False))
 
     # TODO delete me?
     ## write custom yml files
-    #if bpy.data.worlds[0].exportCustomData:
+    #if bpy.data.window_managers[0].exportCustomData:
     #    log("Exporting custom files to to " + path + "...", "INFO")
     #    for text in customtexts:
     #        with open(os.path.join(path, text.name), 'w') as op:

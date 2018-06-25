@@ -31,8 +31,12 @@ import bpy
 import bpy.utils.previews
 import phobos.utils.naming as nUtils
 import phobos.utils.io as ioUtils
+import phobos.utils.blender as bUtils
 from phobos.phoboslog import log
 from bpy.props import StringProperty, BoolProperty
+
+# FIXME: the global variables get overwritten by the reload function
+#        in phobos' __init__
 
 model_data = {}
 model_previews = {}
@@ -40,10 +44,16 @@ categories = set([])
 
 
 def getModelListForEnumProperty(self, context):
-    ''' Returns a list of (str, str, str) elements which contains the models
+    """Returns a list of (str, str, str) elements which contains the models
     contained in the currently selected model category.
     If there are no model categories (i.e. '-') return ('-', '-', '-').
-    '''
+
+    Args:
+      context: 
+
+    Returns:
+
+    """
     category = context.window_manager.category
     if category == '-' or category == '':
         return [('-',) * 3]
@@ -51,13 +61,19 @@ def getModelListForEnumProperty(self, context):
 
 
 def getCategoriesForEnumProperty(self, context):
-    ''' Return a list of (str, str, str) elements, each referring to an
-    available category in the model library.
-    If there are no categories return ('-', '-', '-').
-    '''
+    """
+
+    Args:
+      context: 
+
+    Returns:
+      available category in the model library.
+      If there are no categories return ('-', '-', '-').
+
+    """
     if len(categories) == 0:
         return [('-',) * 3]
-    return [(item,) * 3 for item in categories]
+    return sorted([(item,) * 3 for item in categories])
 
 
 def compileModelList():
@@ -72,13 +88,13 @@ def compileModelList():
     model_previews.clear()
     model_data.clear()
 
-    rootpath = bpy.context.user_preferences.addons["phobos"].preferences.modelsfolder
-    i = 0
+    rootpath = bUtils.getPhobosPreferences().modelsfolder
     if rootpath == '' or not os.path.exists(rootpath):
         log('Model library folder does not exist.')
         return
 
     # parse the model folder
+    i = 0
     for category in os.listdir(rootpath):
         categorypath = os.path.join(rootpath, category)
         # skip all non folders
@@ -100,24 +116,24 @@ def compileModelList():
 
                 # use existing thumbnail if available
                 if os.path.exists(os.path.join(modelpath, 'thumbnails')):
-                    preview = newpreviewcollection.load(modelname, os.path.join(modelpath, 'thumbnails', modelname+'.png'), 'IMAGE')
-                    log("Adding model to preview: " + os.path.join(modelpath, 'thumbnails', modelname+'.png'),
-                        'DEBUG', 'compileModelList')
+                    previewpath = os.path.join(modelpath,'thumbnails', modelname+'.png')
+                    preview = newpreviewcollection.load(modelname, previewpath, 'IMAGE')
                 # otherwise create one from the blend file
                 else:
-                    preview = newpreviewcollection.load(modelname, os.path.join(modelpath, 'blender', modelname + '.blend'), 'BLEND')
-                    log("Adding model to preview: " + os.path.join(os.path.join(modelpath, 'blender', modelname + '.blend')),
-                        'DEBUG', 'compileModelList')
+                    previewpath = os.path.join(modelpath, 'blender', modelname + '.blend')
+                    preview = newpreviewcollection.load(modelname, previewpath, 'BLEND')
+                log("Adding model to preview: " + previewpath, 'DEBUG')
                 enum_items.append((modelname, modelname, "", preview.icon_id, i))
                 i += 1
                 categories.add(category)
         # save the category
         newpreviewcollection.enum_items = enum_items
         model_previews[category] = newpreviewcollection
+        log("Finished parsing model folder. Imported {0} models.".format(i), 'INFO')
 
-    # reregister the enumproperty to ensure new items are displayed
-    WindowManager.modelpreview = EnumProperty(items=getModelListForEnumProperty, name='Model')
-    WindowManager.category = EnumProperty(items=getCategoriesForEnumProperty, name='Category')
+    ## reregister the enumproperty to ensure new items are displayed
+    #WindowManager.modelpreview = EnumProperty(items=getModelListForEnumProperty, name='Model')
+    #WindowManager.category = EnumProperty(items=getCategoriesForEnumProperty, name='Category')
 
 
 class UpdateModelLibraryOperator(bpy.types.Operator):
@@ -141,12 +157,12 @@ class ImportModelFromLibraryOperator(bpy.types.Operator):
     namespace = StringProperty(
         name="Namespace",
         default="",
-        description="Namespace with which to wrap the imported model. Avoids duplicate names of Blender objects."
+        description="Namespace with which to wrap the imported model."
     )
 
     use_prefix = BoolProperty(
-       name='Use prefix',
-       default=True,
+       name='Use Prefix',
+       default=False,
        description="Import model with fixed prefixed instead of removable namespace.")
 
     #as_reference = BoolProperty(
@@ -170,13 +186,16 @@ class ImportModelFromLibraryOperator(bpy.types.Operator):
 
     def execute(self, context):
         wm = context.window_manager
+        # FIXME: the following is a hack to fix the problem mentioned at the top
+        if not model_data:
+            compileModelList()
         filepath = os.path.join(model_data[wm.category][wm.modelpreview]['path'],
                                 'blender', wm.modelpreview+'.blend')
         if ioUtils.importBlenderModel(filepath, self.namespace, self.use_prefix):
             return {'FINISHED'}
         else:
-            log("Model " + wm.modelpreview + " could not be loaded from library: No valid .blend file.",
-                "ERROR")
+            log("Model " + wm.modelpreview + " could not be loaded from library:"
+                "No valid .blend file.", "ERROR")
             return {'CANCELLED'}
 
 
@@ -190,7 +209,6 @@ def register():
     WindowManager.modelpreview = EnumProperty(items=getModelListForEnumProperty, name='Model')
     WindowManager.category = EnumProperty(items=getCategoriesForEnumProperty, name='Category')
     compileModelList()
-
 
 def unregister():
     for previews in model_previews.values():

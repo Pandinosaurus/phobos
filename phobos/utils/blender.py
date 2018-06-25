@@ -32,11 +32,30 @@ import mathutils
 import phobos.defs as defs
 import phobos.model.materials as materials
 from phobos.phoboslog import log
+from phobos.phobossystem import getConfigPath
 from . import selection as sUtils
+from . import naming as nUtils
+
+
+def update():
+    """Forces Blender to update scene contents (i.e. transformations).
+
+    Sometimes when e.g. manipulating internal matrices of Blender objects such as
+    matrix_world or matrix_local, Blender will not recalculate all related transforms,
+    especially not the visual transform. The bpy.context.scene.update() function often
+    named as the solution to this will lead to the matrices being updated, but not the
+    visual transforms. This Function runs code (may be updated with new Blender verions)
+    that forces Blender to update the visual transforms.
+
+    Returns: None
+
+    """
+    bpy.context.scene.frame_set(1)
+    bpy.context.scene.frame_set(0)
 
 
 def compileEnumPropertyList(iterable):
-    return (((a,)*3 for a in iterable))
+    return ((a,)*3 for a in iterable)
 
 
 def getBlenderVersion():
@@ -44,13 +63,19 @@ def getBlenderVersion():
     return bpy.app.version[0] * 100 + bpy.app.version[1]
 
 
+def getPhobosPreferences():
+    return bpy.context.user_preferences.addons["phobos"].preferences
+
+
 def printMatrices(obj, info=None):
     """This function prints the matrices of an object to the screen.
 
-    :param obj: The object to print the matrices from.
-    :type obj: bpy.types.Object
-    :param info: If True the objects name will be included into the printed info.
-    :type info: bool
+    Args:
+      obj(bpy.types.Object): The object to print the matrices from.
+      info(bool, optional): If True the objects name will be included into the printed info. (Default value = None)
+
+    Returns:
+
     """
     if not info:
         info = obj.name
@@ -61,29 +86,27 @@ def printMatrices(obj, info=None):
           "\n\nbasis:\n", obj.matrix_basis)
 
 
-def createPrimitive(pname, ptype, psize, player=0, pmaterial="None", plocation=(0, 0, 0), protation=(0, 0, 0),
-                    verbose=False):
+def createPrimitive(pname, ptype, psize, player=0, pmaterial=None, plocation=(0, 0, 0),
+                    protation=(0, 0, 0), phobostype=None):
     """Generates the primitive specified by the input parameters
 
-    :param pname: The primitives new name.
-    :type pname: str
-    :param ptype: The new primitives type. Can be one of *box, sphere, cylinder, cone, disc*
-    :type ptype: str
-    :param psize: The new primitives size. Depending on the ptype it can be either a single float or a tuple.
-    :type psize: float or list
-    :param player: The layer bitmask for the new blender object.
-    :param pmaterial: The new primitives material.
-    :param plocation: The new primitives location.
-    :type plocation: tuple
-    :param protation: The new primitives rotation.
-    :type protation: tuple
-    :return: bpy.types.Object - the new blender object.
+    Args:
+      pname(str): The primitives new name.
+      ptype(str): The new primitives type. Can be one of *box, sphere, cylinder, cone, disc*
+      psize(float or list): The new primitives size. Depending on the ptype it can be either a single float or a tuple.
+      player: The layer bitmask for the new blender object. (Default value = 0)
+      pmaterial: The new primitives material. (Default value = None)
+      plocation(tuple, optional): The new primitives location. (Default value = (0)
+      protation(tuple): The new primitives rotation.
+      phobostype(str): phobostype of object to be created
+      0:
+
+    Returns:
+      bpy.types.Object - the new blender object.
+
     """
-    if verbose:
-        log(ptype + psize, "INFO", "createPrimitive")
+    # TODO: allow placing on currently active layer?
     try:
-        # TODO delete me?
-        # n_layer = bpy.context.scene.active_layer
         n_layer = int(player)
     except ValueError:
         n_layer = defs.layerTypes[player]
@@ -95,20 +118,23 @@ def createPrimitive(pname, ptype, psize, player=0, pmaterial="None", plocation=(
         obj = bpy.context.object
         obj.dimensions = psize
     if ptype == "sphere":
-        bpy.ops.mesh.primitive_uv_sphere_add(size=psize, layers=players, location=plocation, rotation=protation)
+        bpy.ops.mesh.primitive_uv_sphere_add(size=psize, layers=players, location=plocation,
+                                             rotation=protation)
     elif ptype == "cylinder":
-        bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=psize[0], depth=psize[1], layers=players,
-                                            location=plocation, rotation=protation)
+        bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=psize[0], depth=psize[1],
+                                            layers=players, location=plocation, rotation=protation)
     elif ptype == "cone":
-        bpy.ops.mesh.primitive_cone_add(vertices=32, radius=psize[0], depth=psize[1], cap_end=True, layers=players,
-                                        location=plocation, rotation=protation)
+        bpy.ops.mesh.primitive_cone_add(vertices=32, radius=psize[0], depth=psize[1], cap_end=True,
+                                        layers=players, location=plocation, rotation=protation)
     elif ptype == 'disc':
-        bpy.ops.mesh.primitive_circle_add(vertices=psize[1], radius=psize[0], fill_type='TRIFAN', location=plocation,
-                                          rotation=protation, layers=players)
+        bpy.ops.mesh.primitive_circle_add(vertices=psize[1], radius=psize[0], fill_type='TRIFAN',
+                                          location=plocation, rotation=protation, layers=players)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
     obj = bpy.context.object
-    obj.name = pname
-    if pmaterial != 'None':
+    if phobostype:
+        obj.phobostype = phobostype
+    nUtils.safelyName(obj, pname, phobostype)
+    if pmaterial:
         materials.assignMaterial(obj, pmaterial)
     return obj
 
@@ -120,12 +146,14 @@ def setObjectLayersActive(obj):
 
 
 def toggleLayer(index, value=None):
-    """ This function toggles a specific layer or sets it to a desired value.
+    """This function toggles a specific layer or sets it to a desired value.
 
-    :param index: The layer index you want to change.
-    :type index: int
-    :param value: True if visible, None for toggle.
-    :type value: bool
+    Args:
+      index(int): The layer index you want to change.
+      value(bool, optional): True if visible, None for toggle. (Default value = None)
+
+    Returns:
+
     """
     if value:
         bpy.context.scene.layers[index] = value
@@ -135,6 +163,12 @@ def toggleLayer(index, value=None):
 
 def defLayers(layerlist):
     """Returns a list of 20 elements encoding the visible layers according to layerlist
+
+    Args:
+      layerlist:
+
+    Returns:
+
     """
     if type(layerlist) is not list:
         layerlist = [layerlist]
@@ -147,10 +181,12 @@ def defLayers(layerlist):
 def updateTextFile(textfilename, newContent):
     """This function updates a blender textfile or creates a new one if it is not existent.
 
-    :param textfilename: The blender textfiles file name.
-    :type textfilename: str
-    :param newContent: The textfiles new content.
-    :type newContent: str
+    Args:
+      textfilename(str): The blender textfiles file name.
+      newContent(str): The textfiles new content.
+
+    Returns:
+
     """
     try:
         bpy.data.texts.remove(bpy.data.texts[textfilename])
@@ -164,9 +200,12 @@ def updateTextFile(textfilename, newContent):
 def readTextFile(textfilename):
     """This function returns the content of a specified text file.
 
-    :param textfilename: The blender textfiles name.
-    :type textfilename: str
-    :return: str - the textfiles content.
+    Args:
+      textfilename(str): The blender textfiles name.
+
+    Returns:
+      str - the textfiles content.
+
     """
     try:
         return "\n".join([l.body for l in bpy.data.texts[textfilename].lines])
@@ -178,10 +217,12 @@ def readTextFile(textfilename):
 def createNewTextfile(textfilename, contents):
     """This function creates a new blender text file with the given content.
 
-    :param textfilename: The new blender texts name.
-    :type textfilename: str
-    :param contents: The new textfiles content.
-    :type contents: str
+    Args:
+      textfilename(str): The new blender texts name.
+      contents(str): The new textfiles content.
+
+    Returns:
+
     """
     for text in bpy.data.texts:
         text.tag = True
@@ -200,8 +241,11 @@ def openScriptInEditor(scriptname):
     """This function opens a script/textfile in an open blender text window. Nothing happens if there is no
     available text window.
 
-    :param scriptname: The scripts name.
-    :type scriptname: str
+    Args:
+      scriptname(str): The scripts name.
+
+    Returns:
+
     """
     if scriptname in bpy.data.texts:
         for area in bpy.context.screen.areas:
@@ -213,6 +257,12 @@ def openScriptInEditor(scriptname):
 
 def cleanObjectProperties(props):
     """Cleans a predefined list of Blender-specific or other properties from the dictionary.
+
+    Args:
+      props:
+
+    Returns:
+
     """
     getridof = ['phobostype', '_RNA_UI', 'cycles_visibility', 'startChain', 'endChain', 'masschanged']
     if props:
@@ -223,8 +273,7 @@ def cleanObjectProperties(props):
 
 
 def cleanScene():
-    """This function cleans up the scene and removes all blender objects, meshes, materials and lights.
-    """
+    """Clean up blend file (remove all objects, meshes, materials and lights)"""
     # select all objects
     bpy.ops.object.select_all(action="SELECT")
 
@@ -248,10 +297,15 @@ def cleanScene():
 def createPreview(objects, export_path, modelname, render_resolution=256, opengl=False):
     """Creates a thumbnail of the given objects.
 
-    :param obj: List of objects for the thumbnail.
-    :type obj: list
-    :param Resolution used for the render.
-    :type int
+    Args:
+      objects(list of bpy.types.Object): list of objects for the thumbnail
+      export_path(str): folder to export image to
+      modelname(str): name of model (used as file name)
+      render_resolution(int): side length of resulting image in pixels (Default value = 256)
+      opengl(bool): whether to use opengl rendering or not (Default value = False)
+
+    Returns:
+
     """
     log("Creating thumbnail of model: "+modelname, "INFO")
 
@@ -266,17 +320,18 @@ def createPreview(objects, export_path, modelname, render_resolution=256, opengl
         if not (ob in objects):
             ob.hide_render = True
             ob.hide = True
-    bpy.ops.view3d.view_selected()  # zoom in to objects
 
     # render the preview
     if opengl:  # use the viewport representation to create preview
+        bpy.ops.view3d.view_selected()
         bpy.ops.render.opengl(view_context=True)
     else:  # use real rendering
         # create camera
         bpy.ops.object.camera_add(view_align=True)
         cam = bpy.context.scene.objects.active
         bpy.data.cameras[cam.data.name].type = 'ORTHO'
-        bpy.data.scenes[0].camera = cam
+        bpy.data.scenes[0].camera = cam  # set camera as active camera
+
         sUtils.selectObjects(objects, True, 0)
         bpy.ops.view3d.camera_to_view_selected()
         # create light
@@ -299,3 +354,57 @@ def createPreview(objects, export_path, modelname, render_resolution=256, opengl
     for ob in bpy.data.objects:
         ob.hide_render = False
         ob.hide = False
+
+
+def toggleTransformLock(obj, setting=None):
+    """Toogle transform lock for the referred object"""
+    obj.lock_location[0] = setting if setting is not None else not obj.lock_location[0]
+    obj.lock_location[1] = setting if setting is not None else not obj.lock_location[1]
+    obj.lock_location[2] = setting if setting is not None else not obj.lock_location[2]
+    obj.lock_rotation[0] = setting if setting is not None else not obj.lock_rotation[0]
+    obj.lock_rotation[1] = setting if setting is not None else not obj.lock_rotation[1]
+    obj.lock_rotation[2] = setting if setting is not None else not obj.lock_rotation[2]
+    obj.lock_scale[0] = setting if setting is not None else not obj.lock_scale[0]
+    obj.lock_scale[1] = setting if setting is not None else not obj.lock_scale[1]
+    obj.lock_scale[2] = setting if setting is not None else not obj.lock_scale[2]
+
+
+def switchToScene(scenename):
+    """Switch to Blender scene of the given name"""
+    if scenename not in bpy.data.scenes.keys():
+        bpy.data.scenes.new(scenename)
+    bpy.context.screen.scene = bpy.data.scenes[scenename]
+    return bpy.data.scenes[scenename]
+
+
+def getCombinedDimensions(objects):
+    """Returns the dimension of the space the objects passed occupy.
+
+    Args:
+        objects(list): list of
+
+    Returns:
+        list of floats (x, y, z) of dimensions
+
+    Raises:
+        ValueError: If empty object list is passed.
+
+    """
+    bbpoints = []
+    for o in objects:
+        for p in o.bound_box:
+            bbpoints.append(o.matrix_world * mathutils.Vector(p))
+    mindims = [min([bbpoint[i] for bbpoint in bbpoints]) for i in (0, 1, 2)]
+    maxdims = [max([bbpoint[i] for bbpoint in bbpoints]) for i in (0, 1, 2)]
+    return [abs(maxdims[i]-mindims[i]) for i in (0, 1, 2)]
+
+
+def getPhobosConfigPath():
+    """Returns the user-defined config path if set or the default-path
+
+    Returns(str): (user-defined) config path
+    """
+    if bpy.context.user_preferences.addons["phobos"].preferences.configfolder != '':
+        return bpy.context.user_preferences.addons["phobos"].preferences.configfolder
+    else:  # the following if copied from setup.py, may be imported somehow in the future
+        return getConfigPath()

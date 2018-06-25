@@ -6,14 +6,13 @@ links = [link for link in bpy.context.selected_objects if link.phobostype == 'li
 visuals = [v for v in bpy.context.selected_objects if v.phobostype == 'visual' and v.parent]
 
 # rename all bones so they are not all named 'Bone' in the joint armature
-
-
 for link in links:
     select([link], clear=True, active=0)
     link.data.bones[0].name = link.name
     bpy.ops.object.mode_set(mode='EDIT')
     print(link.name, len(link.data.bones), len(link.data.edit_bones))
     link.data.edit_bones[0].name = link.name
+    
     bpy.ops.object.mode_set(mode='OBJECT')
 
 
@@ -26,11 +25,11 @@ for l in links:
     try:
         lparents[l.name] = l.parent.name
     except AttributeError:
-        pass #root link
+        pass  # root link
 
 select(visuals, clear=True, active=0)
 bpy.ops.object.parent_clear(type='CLEAR_KEEP_TRANSFORM')
-select(links, clear=True)
+select(links, clear=True, active=links.index(root))
 bpy.context.scene.objects.active = root
 bpy.ops.object.join()
 

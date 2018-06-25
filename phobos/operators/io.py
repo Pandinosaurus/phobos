@@ -30,7 +30,6 @@ import os
 import yaml
 import sys
 import inspect
-import shutil
 
 import bpy
 import bgl
@@ -48,11 +47,9 @@ import phobos.utils.selection as sUtils
 import phobos.utils.io as ioUtils
 import phobos.utils.blender as bUtils
 from phobos.utils.io import securepath
-import phobos.io.entities as entities
-import phobos.io.meshes as meshes
+import phobos.io.entities as entity_io
 from phobos.io.entities import entity_types
 from phobos.io.entities.entities import deriveGenericEntity
-from phobos.io.scenes import scene_types
 
 
 class ExportSceneOperator(Operator):
@@ -70,36 +67,23 @@ class ExportSceneOperator(Operator):
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        exportlist = []
-        # TODO variable not used
-        exportsettings = ioUtils.getExpSettings()
-
         # identify all entities' roots in the scene
-        entities = ioUtils.getExportEntities()
-        if not entities:
+        rootobjects = ioUtils.getEntityRoots()
+        if not rootobjects:
             log("There are no entities to export!", "WARNING")
-            return {'CANCELLED'}
 
         # derive entities and export if necessary
-        models = set()
-        for root in entities:
-            log("Adding entity '" +
-                str(root["entity/name"]) + "' to scene.", "INFO")
+        modellist = []
+        for root in rootobjects:
+            log("Adding entity '" + str(root["entity/name"]) + "' to scene.", "INFO")
             if root["entity/type"] in entity_types:
                 # TODO delete me?
                 # try:
                 if (self.exportModels and
                         'export' in entity_types[root['entity/type']] and
                         root['modelname'] not in models):
-                    modelpath = os.path.join(
-                        ioUtils.getExportPath(), self.sceneName, root['modelname'])
-                    # FIXME: the following is a hack, the problem is that
-                    # robots are always smurf entities
-                    if root['entity/type'] == 'smurf':
-                        formatlist = ['smurf', 'urdf']
-                    else:
-                        formatlist = [root['entity/type']]
-                    exportModel(root, modelpath, formatlist)
+                    modelpath = os.path.join(ioUtils.getExportPath(), self.sceneName, root['modelname'])
+                    exportModel(models.deriveModelDictionary(root), modelpath)
                     models.add(root['modelname'])
                 # known entity export
                 entity = entity_types[root["entity/type"]]['derive'](root,
@@ -112,12 +96,6 @@ class ExportSceneOperator(Operator):
             else:
                 entity = deriveGenericEntity(root)
             exportlist.append(entity)
-        for scenetype in scene_types:
-            typename = "export_scene_" + scenetype
-            # check if format exists and should be exported
-            if getattr(bpy.data.worlds[0], typename):
-                scene_types[scenetype]['export'](exportlist, os.path.join(
-                    ioUtils.getExportPath(), self.sceneName))
         return {'FINISHED'}
 
 
@@ -169,7 +147,7 @@ class ExportModelOperator(Operator):
                 log("Could not secure path to export to.", "ERROR")
                 continue
             log("Export path: " + exportpath, "DEBUG")
-            exportModel(root, exportpath)
+            ioUtils.exportModel(models.deriveModelDictionary(root), exportpath)
 
         # select all exported models after export is done
         if ioUtils.getExpSettings().selectedOnly:
@@ -219,79 +197,6 @@ class ExportModelOperator(Operator):
         return {'FINISHED'}
 
 
-def exportModel(root, export_path, entitytypes=None, model=None):
-    # derive model
-    model = models.buildModelDictionary(root)
-    if not model:
-        model = models.buildModelDictionary(root)
-
-    # export model in selected formats
-    if entitytypes is None:
-        entitytypes = entities.entity_types
-    for entitytype in entitytypes:
-        typename = "export_entity_" + entitytype
-        # check if format exists and should be exported
-        if not getattr(bpy.data.worlds[0], typename, False):
-            continue
-        # format exists and is exported:
-        if ioUtils.getExpSettings().structureExport:
-            model_path = os.path.join(export_path, entitytype)
-        else:
-            model_path = export_path
-        securepath(model_path)
-        try:
-            entities.entity_types[entitytype]['export'](model, model_path)
-            log("Export model: " + model['name'] + ' as ' + entitytype +
-                " to " + model_path, "DEBUG")
-        except KeyError:
-            log("No export function available for selected model type: " +
-                entitytype, "ERROR")
-            continue
-
-    # TODO: Move mesh export to individual formats? This is practically SMURF
-    # export meshes in selected formats
-    i = 1
-    mt = len([m for m in meshes.mesh_types if getattr(bpy.data.worlds[0], "export_mesh_"+m)])
-    mc = len(model['meshes'])
-    n = mt*mc
-    for meshtype in meshes.mesh_types:
-        mesh_path = ioUtils.getOutputMeshpath(export_path, meshtype)
-        try:
-            typename = "export_mesh_" + meshtype
-            if getattr(bpy.data.worlds[0], typename):
-                securepath(mesh_path)
-                for meshname in model['meshes']:
-                    meshes.mesh_types[meshtype]['export'](model['meshes'][meshname], mesh_path)
-                    display.setProgress(i/n, 'Exporting '+meshname+'.'+meshtype+'...')
-                    i += 1
-        except KeyError:
-            log("No export function available for selected mesh function: " +
-                meshtype, "ERROR")
-            print(sys.exc_info()[0])
-    display.setProgress(0)
-
-    # TODO: Move texture export to individual formats? This is practically SMURF
-    # TODO: Also, this does not properly take care of textures embedded in a .blend file
-    # export textures
-    if ioUtils.getExpSettings().exportTextures:
-        for materialname in model['materials']:
-            mat = model['materials'][materialname]
-            for texturetype in ['diffuseTexture', 'normalTexture',
-                                'displacementTexture']:
-                if texturetype in mat:
-                    sourcepath = os.path.join(os.path.expanduser(
-                        bpy.path.abspath('//')), mat[texturetype])
-                    if os.path.isfile(sourcepath):
-                        texture_path = securepath(
-                            os.path.join(export_path, 'textures'))
-                        log("Exporting textures to " + texture_path, "INFO")
-                        try:
-                            shutil.copy(sourcepath, os.path.join(
-                                texture_path, os.path.basename(mat[texturetype])))
-                        except shutil.SameFileError:
-                            log("{} already in place".format(texturetype), "INFO")
-
-
 class ImportModelOperator(bpy.types.Operator):
     """Import robot model file from various formats"""
     bl_idname = "phobos.import_robot_model"
@@ -304,8 +209,8 @@ class ImportModelOperator(bpy.types.Operator):
 
     entitytype = EnumProperty(
         name="Entity type",
-        items=tuple((e, e, 'file extensions: ' + str(entities.entity_types[e]['extensions']))
-                    for e in entities.entity_types if 'import' in entities.entity_types[e]),
+        items=tuple((e, e, 'file extensions: ' + str(entity_io.entity_types[e]['extensions']))
+                    for e in entity_io.entity_types if 'import' in entity_io.entity_types[e]),
         description="Type of entity to import from file")
 
     @classmethod
@@ -313,21 +218,16 @@ class ImportModelOperator(bpy.types.Operator):
         return context is not None
 
     def execute(self, context):
-        try:
-            log("Importing " + self.filepath + ' as ' + self.entitytype, "INFO")
-            model = entities.entity_types[
-                self.entitytype]['import'](self.filepath)
-            # bUtils.cleanScene()
-            models.buildModelFromDictionary(model)
-            for layer in ['link', 'inertial', 'visual', 'collision', 'sensor']:
-                bUtils.toggleLayer(defs.layerTypes[layer], True)
-        except KeyError:
-            log("No import function available for selected model type: " + self.entitytype, "ERROR")
+        log("Importing " + self.filepath + ' as ' + self.entitytype, "INFO")
+        model = entity_io.entity_types[self.entitytype]['import'](self.filepath)
+        # bUtils.cleanScene()
+        models.buildModelFromDictionary(model)
+        for layer in ['link', 'inertial', 'visual', 'collision', 'sensor']:
+            bUtils.toggleLayer(defs.layerTypes[layer], True)
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        # TODO delete me?
-        # wm.invoke_props_dialog(self,width=300,height=100)
+        self.filepath = bUtils.getPhobosPreferences().modelsfolder
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -353,13 +253,11 @@ def generateLibEntries(param1, param2):
 
 def loadModelsAndPoses():
     # DOCU add some docstring
-    if bpy.context.user_preferences.addons["phobos"].preferences.modelsfolder:
-        modelsfolder = os.path.abspath(bpy.context.user_preferences.addons[
-                                       "phobos"].preferences.modelsfolder)
+    if bUtils.getPhobosPreferences().modelsfolder:
+        modelsfolder = os.path.abspath(bUtils.getPhobosPreferences().modelsfolder)
     else:
         modelsfolder = ''
-    modelsPosesColl = bpy.context.user_preferences.addons[
-        "phobos"].preferences.models_poses
+    modelsPosesColl = bUtils.getPhobosPreferences().models_poses
     robots_found = []
     print(modelsfolder)
     for root, dirs, files in os.walk(modelsfolder):
@@ -425,8 +323,7 @@ class ReloadModelsAndPosesOperator(bpy.types.Operator):
 
     def execute(self, context):
         loadModelsAndPoses()
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            "phobos"].preferences.models_poses
+        modelsPosesColl = bUtils.getPhobosPreferences().models_poses
         for model_pose in modelsPosesColl:
             if model_pose.name not in bpy.data.images.keys():
                 if model_pose.type == 'robot_name':
@@ -497,8 +394,7 @@ class ImportSelectedLibRobot(Operator):
     @classmethod
     def poll(self, context):
         result = False
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            "phobos"].preferences.models_poses
+        modelsPosesColl = bUtils.getPhobosPreferences().models_poses
         activeModelPoseIndex = bpy.context.scene.active_ModelPose
         root = None
         # TODO delete me?
@@ -520,8 +416,7 @@ class ImportSelectedLibRobot(Operator):
 
     def invoke(self, context, event):
         wm = context.window_manager
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            "phobos"].preferences.models_poses
+        modelsPosesColl = bUtils.getPhobosPreferences().models_poses
         activeModelPoseIndex = bpy.context.scene.active_ModelPose
 
         selected_robot = modelsPosesColl[
@@ -537,8 +432,7 @@ class ImportSelectedLibRobot(Operator):
 
     def execute(self, context):
         log("Import robot bake", "INFO")
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            "phobos"].preferences.models_poses
+        modelsPosesColl = bUtils.getPhobosPreferences().models_poses
         activeModelPoseIndex = bpy.context.scene.active_ModelPose
         selected_robot = modelsPosesColl[
             bpy.data.images[activeModelPoseIndex].name]
@@ -632,8 +526,7 @@ class ExportCurrentPoseOperator(Operator):
 
     @classmethod
     def poll(self, context):
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            "phobos"].preferences.models_poses
+        modelsPosesColl = bUtils.getPhobosPreferences().models_poses
         activeModelPoseIndex = bpy.context.scene.active_ModelPose
         return (context.selected_objects and context.active_object and sUtils.isRoot(context.active_object) and
                 bpy.data.images[activeModelPoseIndex].name in modelsPosesColl.keys() and
@@ -675,8 +568,7 @@ class ExportCurrentPoseOperator(Operator):
     def execute(self, context):
         root = sUtils.getRoot(context.selected_objects[0])
 
-        modelsPosesColl = bpy.context.user_preferences.addons[
-            'phobos'].preferences.models_poses
+        modelsPosesColl = bUtils.getPhobosPreferences().models_poses
         activeModelPoseIndex = bpy.context.scene.active_ModelPose
         selected_robot = modelsPosesColl[
             bpy.data.images[activeModelPoseIndex].name]

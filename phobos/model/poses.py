@@ -41,9 +41,12 @@ from phobos.utils.io import securepath
 def deriveObjectPose(obj):
     """Derives a pose of link, visual or collision object.
 
-    :param obj: The blender object to derive the pose from.
-    :type obj: bpy_types.Object
-    :return: dict
+    Args:
+      obj(bpy_types.Object): The blender object to derive the pose from.
+
+    Returns:
+      dict
+
     """
     effectiveparent = sUtils.getEffectiveParent(obj)
     matrix = eUtils.getCombinedTransform(obj, effectiveparent)
@@ -62,23 +65,31 @@ def deriveObjectPose(obj):
 def bakeModel(objlist, modelname, posename="", decimate_type='COLLAPSE', decimate_parameter=0.1):
     """This function gets a list of objects and creates a single, simplified mesh from it and exports it to .stl.
 
-    :param objlist: The list of blender objects to join and export as simplified stl file.
-    :type objlist: list
-    :param modelname: The new models name and filename.
-    :type modelname: str
+    Args:
+      objlist(list: list): The list of blender objects to join and export as simplified stl file.
+      modelname(str): The new models name and filename.
+      posename:  (Default value = "")
+      decimate_type:  (Default value = 'COLLAPSE')
+      decimate_parameter:  (Default value = 0.1)
+
+    Returns:
+
     """
-    if bpy.data.worlds[0].phobosexportsettings.relativePath:
+    if bpy.data.window_managers[0].phobosexportsettings.relativePath:
         # CHECK careful with path consistency (Windows)
-        outpath = securepath(os.path.expanduser(os.path.join(bpy.path.abspath("//"), bpy.data.worlds[0].phobosexportsettings.path)))
+        outpath = securepath(os.path.expanduser(
+            os.path.join(bpy.path.abspath("//"),
+                         bpy.data.window_managers[0].phobosexportsettings.path)))
     else:
         # CHECK careful with path consistency (Windows)
-        outpath = securepath(os.path.expanduser(bpy.data.worlds[0].phobosexportsettings.path))
+        outpath = securepath(os.path.expanduser(
+            bpy.data.window_managers[0].phobosexportsettings.path))
 
     # TODO delete me?
     #bake_outpath = securepath(os.path.join(outpath, modelname) if savetosubfolder else outpath)
     bake_outpath = outpath
 
-    if bpy.data.worlds[0].phobosexportsettings.structureExport:
+    if bpy.data.window_managers[0].phobosexportsettings.structureExport:
         securepath(os.path.join(bake_outpath, 'bakes'))
         bake_outpath = os.path.join(bake_outpath, 'bakes/')
 
